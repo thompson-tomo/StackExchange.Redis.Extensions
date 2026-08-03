@@ -3,33 +3,9 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-/* Unmerged change from project 'StackExchange.Redis.Extensions.Core(net6.0)'
-Before:
-using System.Linq;
-using System.Threading.Tasks;
-After:
-using System.Threading.Tasks;
-*/
-
-/* Unmerged change from project 'StackExchange.Redis.Extensions.Core(net7.0)'
-Before:
-using System.Linq;
-using System.Threading.Tasks;
-After:
-using System.Threading.Tasks;
-*/
-
-/* Unmerged change from project 'StackExchange.Redis.Extensions.Core(net8.0)'
-Before:
-using System.Linq;
-using System.Threading.Tasks;
-After:
-using System.Threading.Tasks;
-*/
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
