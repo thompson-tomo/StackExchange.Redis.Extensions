@@ -25,7 +25,7 @@ internal sealed class RedisInformationMiddleware(
 #pragma warning restore RCS1046
     {
         if (logger.IsEnabled(LogLevel.Trace))
-            logger.LogTrace("{MiddlewareName} --> Handling request: {Path}", nameof(RedisInformationMiddleware), context.Request.Path);
+            logger.LogTrace("{MiddlewareName} --> Handling request: {Path}", nameof(RedisInformationMiddleware), context.Request.Path.Value?.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", string.Empty, StringComparison.Ordinal));
 
         if (context.Request.Method == "GET" && context.Request.Path == "/redis/connectionInfo")
         {
