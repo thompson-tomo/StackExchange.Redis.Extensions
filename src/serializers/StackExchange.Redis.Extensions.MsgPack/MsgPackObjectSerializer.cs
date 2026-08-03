@@ -1,8 +1,6 @@
 // Copyright (c) Ugo Lattanzi.  All Rights Reserved.  Licensed under the MIT license.  See License.txt in the project root for license information.
 
 using System;
-using System.Globalization;
-using System.IO;
 using System.Text;
 
 using MsgPack.Serialization;
@@ -45,13 +43,12 @@ public class MsgPackObjectSerializer : ISerializer
             return default;
 
         if (typeof(T) == typeof(string))
-            return (T)Convert.ChangeType(encoding.GetString(serializedObject), typeof(T), CultureInfo.InvariantCulture);
+            return (T)(object)encoding.GetString(serializedObject);
 
         var serializer = MessagePackSerializer.Get<T>();
 
-        using var byteStream = new MemoryStream(serializedObject);
-
-        return serializer.Unpack(byteStream);
+        // UnpackSingleObject reads the array directly, without a wrapping MemoryStream.
+        return serializer.UnpackSingleObject(serializedObject);
     }
 
     /// <inheritdoc/>
@@ -65,9 +62,7 @@ public class MsgPackObjectSerializer : ISerializer
 
         var serializer = MessagePackSerializer.Get(item.GetType());
 
-        using var byteStream = new MemoryStream();
-        serializer.Pack(byteStream, item);
-
-        return byteStream.ToArray();
+        // PackSingleObject returns the buffer directly, without MemoryStream growth plus final copy.
+        return serializer.PackSingleObject(item);
     }
 }

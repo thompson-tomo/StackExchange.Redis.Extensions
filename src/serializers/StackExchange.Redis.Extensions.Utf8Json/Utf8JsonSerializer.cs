@@ -22,6 +22,10 @@ public class Utf8JsonSerializer : ISerializer
     /// <inheritdoc/>
     public T? Deserialize<T>(byte[]? serializedObject)
     {
+        // Null-guard consistent with every other serializer: Utf8Json would throw on a null buffer.
+        if (serializedObject == null)
+            return default;
+
         return JsonSerializer.Deserialize<T?>(serializedObject);
     }
 }

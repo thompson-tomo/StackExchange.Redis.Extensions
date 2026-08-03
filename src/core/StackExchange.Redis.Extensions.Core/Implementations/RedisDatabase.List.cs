@@ -60,9 +60,6 @@ public partial class RedisDatabase
 
         var item = await Database.ListRightPopAsync(key, flag).ConfigureAwait(false);
 
-        if (item == RedisValue.Null)
-            return default;
-
         return item == RedisValue.Null
             ? default
             : Serializer.Deserialize<T>(item);

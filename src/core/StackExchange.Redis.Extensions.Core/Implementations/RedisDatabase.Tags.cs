@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 using StackExchange.Redis.Extensions.Core.Extensions;
@@ -22,9 +21,10 @@ public partial class RedisDatabase
         if (keys.Length == 0)
             return [];
 
-        var hashKeys = new HashSet<string>();
+        var hashKeys = new HashSet<string>(keys.Length, StringComparer.Ordinal);
 
-        keys.FastIteration((key, _) => hashKeys.Add(key));
+        foreach (var key in keys)
+            hashKeys.Add(key!);
 
         var result = await GetAllAsync<T>(hashKeys, flag).ConfigureAwait(false);
 
@@ -56,8 +56,11 @@ public partial class RedisDatabase
 
         TryAddCondition(transaction, when, key);
 
-        foreach (var tagKey in tags.Select(TagHelper.GenerateTagKey))
-            transaction.SetAddAsync(tagKey, key.OfValueSize(Serializer, maxValueLength, tagKey), commandFlags);
+        // Serialized once: the previous per-tag call produced N identical byte arrays for the same key.
+        var serializedKey = key.OfValueSize(Serializer, maxValueLength, key);
+
+        foreach (var tag in tags)
+            transaction.SetAddAsync(TagHelper.GenerateTagKey(tag), serializedKey, commandFlags);
 
         action(transaction);
 

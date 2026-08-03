@@ -109,10 +109,13 @@ public partial class RedisDatabase : IRedisDatabase
     /// <inheritdoc/>
     public async Task<T?> GetAsync<T>(string key, DateTimeOffset expiresAt, CommandFlags flag = CommandFlags.None)
     {
-        var result = await GetAsync<T>(key, flag).ConfigureAwait(false);
+        // Database resolves a pooled connection on every access: read it once for the two commands.
+        var db = Database;
+        var valueBytes = await db.StringGetAsync(key, flag).ConfigureAwait(false);
+        var result = !valueBytes.HasValue ? default : Serializer.Deserialize<T>(valueBytes);
 
         if (!EqualityComparer<T?>.Default.Equals(result, default))
-            await Database.KeyExpireAsync(key, expiresAt.UtcDateTime.Subtract(DateTime.UtcNow)).ConfigureAwait(false);
+            await db.KeyExpireAsync(key, expiresAt.UtcDateTime.Subtract(DateTime.UtcNow)).ConfigureAwait(false);
 
         return result;
     }
@@ -120,10 +123,12 @@ public partial class RedisDatabase : IRedisDatabase
     /// <inheritdoc/>
     public async Task<T?> GetAsync<T>(string key, TimeSpan expiresIn, CommandFlags flag = CommandFlags.None)
     {
-        var result = await GetAsync<T>(key, flag).ConfigureAwait(false);
+        var db = Database;
+        var valueBytes = await db.StringGetAsync(key, flag).ConfigureAwait(false);
+        var result = !valueBytes.HasValue ? default : Serializer.Deserialize<T>(valueBytes);
 
         if (!EqualityComparer<T?>.Default.Equals(result, default))
-            await Database.KeyExpireAsync(key, expiresIn).ConfigureAwait(false);
+            await db.KeyExpireAsync(key, expiresIn).ConfigureAwait(false);
 
         return result;
     }
@@ -226,10 +231,7 @@ public partial class RedisDatabase : IRedisDatabase
     /// <inheritdoc/>
     public Task<bool> AddAllAsync<T>(Tuple<string, T>[] items, When when = When.Always, CommandFlags flag = CommandFlags.None)
     {
-        var values = items
-            .OfValueInListSize(Serializer, maxValueLength)
-            .Select(x => new KeyValuePair<RedisKey, RedisValue>(x.Key, x.Value))
-            .ToArray();
+        var values = items.ToRedisEntries(Serializer, maxValueLength);
 
         return Database.StringSetAsync(values, when, flag);
     }
@@ -237,10 +239,7 @@ public partial class RedisDatabase : IRedisDatabase
     /// <inheritdoc/>
     public async Task<bool> AddAllAsync<T>(Tuple<string, T>[] items, DateTimeOffset expiresAt, When when = When.Always, CommandFlags flag = CommandFlags.None)
     {
-        var values = items
-            .OfValueInListSize(Serializer, maxValueLength)
-            .Select(x => new KeyValuePair<RedisKey, RedisValue>(x.Key, x.Value))
-            .ToArray();
+        var values = items.ToRedisEntries(Serializer, maxValueLength);
 
         if (values.Length == 0)
             return false;
@@ -265,10 +264,7 @@ public partial class RedisDatabase : IRedisDatabase
     /// <inheritdoc/>
     public async Task<bool> AddAllAsync<T>(Tuple<string, T>[] items, TimeSpan expiresAt, When when = When.Always, CommandFlags flag = CommandFlags.None)
     {
-        var values = items
-            .OfValueInListSize(Serializer, maxValueLength)
-            .Select(x => new KeyValuePair<RedisKey, RedisValue>(x.Key, x.Value))
-            .ToArray();
+        var values = items.ToRedisEntries(Serializer, maxValueLength);
 
         if (values.Length == 0)
             return false;
@@ -333,7 +329,8 @@ public partial class RedisDatabase : IRedisDatabase
 
         var items = await Database.SetPopAsync(key, count, flag).ConfigureAwait(false);
 
-        return items.Select(item => item == RedisValue.Null ? default : Serializer.Deserialize<T>(item));
+        // Materialized eagerly: a lazy Select would re-deserialize every element on each enumeration.
+        return items.ToFastArray(item => item == RedisValue.Null ? default : Serializer.Deserialize<T>(item));
     }
 
     /// <inheritdoc/>
@@ -511,22 +508,25 @@ public partial class RedisDatabase : IRedisDatabase
     {
         pattern = $"{keyPrefix}{pattern}";
         var keys = new HashSet<string>();
+        var hasPrefix = !string.IsNullOrEmpty(keyPrefix);
 
         foreach (var server in ServerIteratorFactory.GetServers(connectionPoolManager.GetConnection(), serverEnumerationStrategy))
         {
+            // The prefix is stripped while filling: a lazy Select would re-allocate every substring on each enumeration.
             await foreach (var key in server.KeysAsync(dbNumber, pattern, 1000).ConfigureAwait(false))
-                keys.Add(key!);
+                keys.Add(hasPrefix ? ((string)key!)[keyPrefix.Length..] : key!);
         }
 
-        return !string.IsNullOrEmpty(keyPrefix)
-            ? keys.Select(k => k.ToString()[keyPrefix.Length..])
-            : keys.Select(k => k.ToString());
+        return keys;
     }
 
     /// <inheritdoc/>
     public Task FlushDbAsync()
     {
-        var endPoints = Database.Multiplexer.GetEndPoints();
+        // Database resolves a pooled connection and allocates the key-prefixed wrapper on every access: read it once.
+        var db = Database;
+        var multiplexer = db.Multiplexer;
+        var endPoints = multiplexer.GetEndPoints();
 
         var tasks = new List<Task>(endPoints.Length);
 
@@ -536,10 +536,10 @@ public partial class RedisDatabase : IRedisDatabase
         {
             ref var endpoint = ref Unsafe.Add(ref searchSpace, i);
 
-            var server = Database.Multiplexer.GetServer(endpoint);
+            var server = multiplexer.GetServer(endpoint);
 
             if (!server.IsReplica)
-                tasks.Add(server.FlushDatabaseAsync(Database.Database));
+                tasks.Add(server.FlushDatabaseAsync(db.Database));
         }
 
         return Task.WhenAll(tasks);
@@ -548,9 +548,10 @@ public partial class RedisDatabase : IRedisDatabase
     /// <inheritdoc/>
     public Task SaveAsync(SaveType saveType, CommandFlags flag = CommandFlags.None)
     {
-        var endPoints = Database.Multiplexer.GetEndPoints();
+        var multiplexer = Database.Multiplexer;
+        var endPoints = multiplexer.GetEndPoints();
 
-        var tasks = endPoints.ToFastArray(endpoint => Database.Multiplexer.GetServer(endpoint).SaveAsync(saveType, flag));
+        var tasks = endPoints.ToFastArray(endpoint => multiplexer.GetServer(endpoint).SaveAsync(saveType, flag));
 
         return Task.WhenAll(tasks);
     }
@@ -621,9 +622,10 @@ public partial class RedisDatabase : IRedisDatabase
 
         // Return a dictionary of the Info Key and Info value
 
-        var result = new Dictionary<string, string>();
+        var result = new Dictionary<string, string>(data.Length);
 
-        data.FastIteration((x, _) => result.TryAdd(x.Key, x.InfoValue));
+        foreach (var detail in data)
+            result.TryAdd(detail.Key, detail.InfoValue);
 
         return result;
     }

@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 using StackExchange.Redis.Extensions.Core.Configuration;
 
@@ -37,10 +36,19 @@ public static class ServerIteratorFactory
                     serverEnumerationStrategy.TargetRole,
                     serverEnumerationStrategy.UnreachableServerAction);
 
-                return serversSingle.Take(1);
+                return TakeFirst(serversSingle);
 
             default:
                 throw new NotImplementedException();
+        }
+    }
+
+    private static IEnumerable<IServer> TakeFirst(ServerEnumerable servers)
+    {
+        foreach (var server in servers)
+        {
+            yield return server;
+            yield break;
         }
     }
 }

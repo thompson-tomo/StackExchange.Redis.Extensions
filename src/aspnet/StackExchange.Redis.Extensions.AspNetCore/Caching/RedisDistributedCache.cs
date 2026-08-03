@@ -22,6 +22,11 @@ internal sealed class RedisDistributedCache : IDistributedCache
     private static readonly RedisValue AbsoluteExpirationField = "absexp";
     private static readonly RedisValue SlidingExpirationField = "sldexp";
 
+    // Cached field arrays: a collection expression at the call-site would allocate a new array on every Get/Refresh.
+    // SE.Redis never mutates the array (same pattern used by Microsoft.Extensions.Caching.StackExchangeRedis).
+    private static readonly RedisValue[] AllFields = [DataField, AbsoluteExpirationField, SlidingExpirationField];
+    private static readonly RedisValue[] MetadataFields = [AbsoluteExpirationField, SlidingExpirationField];
+
     private readonly IDatabase db;
 
     /// <summary>
@@ -110,12 +115,22 @@ internal sealed class RedisDistributedCache : IDistributedCache
             new(SlidingExpirationField, slidingTicks),
         };
 
-        await db.HashSetAsync(key, fields).ConfigureAwait(false);
-
         var expiry = GetExpirationTimeout(absoluteExpiration, options.SlidingExpiration);
 
         if (expiry.HasValue)
-            await db.KeyExpireAsync(key, expiry.Value).ConfigureAwait(false);
+        {
+            // A batch flushes HSET + EXPIRE in a single network write instead of two sequential round-trips.
+            var batch = db.CreateBatch();
+            var setTask = batch.HashSetAsync(key, fields);
+            var expireTask = batch.KeyExpireAsync(key, expiry.Value);
+            batch.Execute();
+
+            await Task.WhenAll(setTask, expireTask).ConfigureAwait(false);
+        }
+        else
+        {
+            await db.HashSetAsync(key, fields).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc/>
@@ -163,9 +178,9 @@ internal sealed class RedisDistributedCache : IDistributedCache
         RedisValue[] results;
 
         if (getData)
-            results = db.HashGet(key, [DataField, AbsoluteExpirationField, SlidingExpirationField]);
+            results = db.HashGet(key, AllFields);
         else
-            results = db.HashGet(key, [AbsoluteExpirationField, SlidingExpirationField]);
+            results = db.HashGet(key, MetadataFields);
 
         if (results[0].IsNull)
             return null;
@@ -181,9 +196,9 @@ internal sealed class RedisDistributedCache : IDistributedCache
         RedisValue[] results;
 
         if (getData)
-            results = await db.HashGetAsync(key, [DataField, AbsoluteExpirationField, SlidingExpirationField]).ConfigureAwait(false);
+            results = await db.HashGetAsync(key, AllFields).ConfigureAwait(false);
         else
-            results = await db.HashGetAsync(key, [AbsoluteExpirationField, SlidingExpirationField]).ConfigureAwait(false);
+            results = await db.HashGetAsync(key, MetadataFields).ConfigureAwait(false);
 
         if (results[0].IsNull)
             return null;

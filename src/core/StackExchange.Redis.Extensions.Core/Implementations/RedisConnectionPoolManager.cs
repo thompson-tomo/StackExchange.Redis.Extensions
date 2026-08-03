@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
@@ -24,10 +24,10 @@ namespace StackExchange.Redis.Extensions.Core.Implementations;
 /// <inheritdoc/>
 public sealed partial class RedisConnectionPoolManager : IRedisConnectionPoolManager
 {
-    private static readonly object @lock = new();
     private readonly IStateAwareConnection[] connections;
     private readonly RedisConfiguration redisConfiguration;
     private readonly ILogger<RedisConnectionPoolManager> logger;
+    private int roundRobinIndex = -1;
     private bool isDisposed;
 
     /// <summary>
@@ -41,14 +41,11 @@ public sealed partial class RedisConnectionPoolManager : IRedisConnectionPoolMan
         logger ??= redisConfiguration.LoggerFactory?.CreateLogger<RedisConnectionPoolManager>();
         this.logger = logger ?? NullLogger<RedisConnectionPoolManager>.Instance;
 
-        lock (@lock)
-        {
-            connections = new IStateAwareConnection[redisConfiguration.PoolSize];
+        connections = new IStateAwareConnection[redisConfiguration.PoolSize];
 
 #pragma warning disable VSTHRD002 // Synchronous wait is required here because constructors cannot be async
-            EmitConnectionsAsync().GetAwaiter().GetResult();
+        EmitConnectionsAsync().GetAwaiter().GetResult();
 #pragma warning restore VSTHRD002
-        }
     }
 
     /// <inheritdoc/>
@@ -82,12 +79,8 @@ public sealed partial class RedisConnectionPoolManager : IRedisConnectionPoolMan
         switch (redisConfiguration.ConnectionSelectionStrategy)
         {
             case ConnectionSelectionStrategy.RoundRobin:
-                var nextIdx
-#if NET6_0_OR_GREATER
-                = RandomNumberGenerator.GetInt32(0, redisConfiguration.PoolSize);
-#else
-                = new Random().Next(0, redisConfiguration.PoolSize);
-#endif
+                // Casting to uint handles the int wraparound: the modulo stays valid across overflow.
+                var nextIdx = (int)((uint)Interlocked.Increment(ref roundRobinIndex) % (uint)connections.Length);
                 connection = connections[nextIdx];
 
                 if (!connection.IsConnected())
@@ -106,19 +99,40 @@ public sealed partial class RedisConnectionPoolManager : IRedisConnectionPoolMan
                 break;
 
             case ConnectionSelectionStrategy.LeastLoaded:
-                // Prefer connected connections; fall back to any if all are disconnected
+                // Prefer connected connections; fall back to any if all are disconnected.
+                // TotalOutstanding() allocates a ServerCounters snapshot in SE.Redis, so it must be called at most once per connection.
                 IStateAwareConnection? candidate = null;
+                var candidateOutstanding = long.MaxValue;
 
                 for (var i = 0; i < connections.Length; i++)
                 {
                     if (!connections[i].IsConnected())
                         continue;
 
-                    if (candidate == null || connections[i].TotalOutstanding() < candidate.TotalOutstanding())
+                    var outstanding = connections[i].TotalOutstanding();
+
+                    if (outstanding < candidateOutstanding)
+                    {
                         candidate = connections[i];
+                        candidateOutstanding = outstanding;
+                    }
                 }
 
-                connection = candidate ?? connections.MinBy(x => x.TotalOutstanding());
+                if (candidate == null)
+                {
+                    for (var i = 0; i < connections.Length; i++)
+                    {
+                        var outstanding = connections[i].TotalOutstanding();
+
+                        if (outstanding < candidateOutstanding)
+                        {
+                            candidate = connections[i];
+                            candidateOutstanding = outstanding;
+                        }
+                    }
+                }
+
+                connection = candidate!;
                 break;
 
             default:
@@ -128,7 +142,9 @@ public sealed partial class RedisConnectionPoolManager : IRedisConnectionPoolMan
         if (!connection.IsConnected())
             LogMessages.AllConnectionsDisconnected(logger, connection.Connection.GetHashCode());
 
-        LogMessages.ConnectionSelected(logger, connection.Connection.GetHashCode(), connection.TotalOutstanding());
+        // Guarded because TotalOutstanding() allocates: log arguments are evaluated at the call-site even when the level is disabled.
+        if (logger.IsEnabled(LogLevel.Debug))
+            LogMessages.ConnectionSelected(logger, connection.Connection.GetHashCode(), connection.TotalOutstanding());
 
         return connection.Connection;
     }

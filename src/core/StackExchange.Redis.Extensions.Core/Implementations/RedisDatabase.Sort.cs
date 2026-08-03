@@ -47,7 +47,8 @@ public partial class RedisDatabase
     {
         var result = await Database.SortedSetRangeByScoreAsync(key, start, stop, exclude, order, skip, take, flag).ConfigureAwait(false);
 
-        return result.Select(m => m == RedisValue.Null ? default : Serializer.Deserialize<T>(m));
+        // Materialized eagerly: a lazy Select would re-deserialize every element on each enumeration.
+        return result.ToFastArray(m => m == RedisValue.Null ? default : Serializer.Deserialize<T>(m));
     }
 
     /// <inheritdoc/>
