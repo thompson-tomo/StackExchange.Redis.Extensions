@@ -1,6 +1,7 @@
 // Copyright (c) Ugo Lattanzi.  All Rights Reserved.  Licensed under the MIT license.  See License.txt in the project root for license information.
 
-using System.IO;
+using System;
+using System.Buffers;
 
 using ProtoBuf;
 
@@ -19,11 +20,12 @@ public class ProtobufSerializer : ISerializer
         if (item == null)
             return [];
 
-        using var ms = new MemoryStream();
+        // IBufferWriter avoids the MemoryStream layer; the final ToArray is the only full copy.
+        var buffer = new ArrayBufferWriter<byte>(256);
 
-        Serializer.Serialize(ms, item);
+        Serializer.Serialize(buffer, item);
 
-        return ms.ToArray();
+        return buffer.WrittenSpan.ToArray();
     }
 
     /// <inheritdoc/>
@@ -32,8 +34,7 @@ public class ProtobufSerializer : ISerializer
         if (serializedObject == null)
             return default;
 
-        using var ms = new MemoryStream(serializedObject);
-
-        return Serializer.Deserialize<T>(ms);
+        // The span-based overload reads the array directly, without a wrapping MemoryStream.
+        return Serializer.Deserialize<T>((ReadOnlyMemory<byte>)serializedObject);
     }
 }

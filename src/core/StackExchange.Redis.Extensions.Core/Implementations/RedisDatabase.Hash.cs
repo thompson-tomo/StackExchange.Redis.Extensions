@@ -3,8 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 using StackExchange.Redis.Extensions.Core.Helpers;
@@ -47,73 +45,42 @@ public partial class RedisDatabase
     /// <inheritdoc/>
     public async Task<IDictionary<string, T?>> HashGetAsync<T>(string hashKey, string[] keys, CommandFlags flag = CommandFlags.None)
     {
-#if NET6_0_OR_GREATER
-        var concurrent = new System.Collections.Concurrent.ConcurrentDictionary<string, T?>();
+        // A single HMGET replaces N parallel HGET round-trips.
+        var fields = keys.ToFastArray(key => (RedisValue)key);
 
-        await Parallel.ForEachAsync(keys, async (key, _) =>
-        {
-            var result = await HashGetAsync<T>(hashKey, key, flag);
-            concurrent.TryAdd(key, result);
-        })
-            .ConfigureAwait(false);
+        var values = await Database.HashGetAsync(hashKey, fields, flag).ConfigureAwait(false);
 
-        return concurrent;
-#else
-        var tasks = new Task<T?>[keys.Length];
+        var result = new Dictionary<string, T?>(keys.Length, StringComparer.Ordinal);
 
         for (var i = 0; i < keys.Length; i++)
-            tasks[i] = HashGetAsync<T>(hashKey, keys[i], flag);
-
-        await Task.WhenAll(tasks).ConfigureAwait(false);
-
-        var result = new Dictionary<string, T?>();
-
-        ref var searchSpace = ref MemoryMarshal.GetReference(tasks.AsSpan());
-
-        for (var i = 0; i < tasks.Length; i++)
         {
-            ref var task = ref Unsafe.Add(ref searchSpace, i);
-            result.Add(keys[i], task.Result);
+            var value = values[i];
+            result[keys[i]] = value.HasValue ? Serializer.Deserialize<T>(value) : default;
         }
 
         return result;
-#endif
     }
 
     /// <inheritdoc/>
     public async Task<IDictionary<string, T?>> HashGetAllAsyncAtOneTimeAsync<T>(string hashKey, string[] keys, CommandFlags flag = CommandFlags.None)
     {
-        var luascript = "local results = {};local insert = table.insert;local rcall = redis.call;for i=1,table.getn(KEYS) do  local value = rcall('HGET','" + hashKey + "', KEYS[i])  if value then insert(results, KEYS[i]) insert(results, value) end end; return results;";
+        // A single HMGET replaces the previous per-call Lua script. Going through HashGetAsync also means the
+        // KeyPrefix is applied to the hash key (the script embedded it unprefixed, and wrongly prefixed the
+        // hash fields passed as KEYS) and the hash key is no longer exposed to Lua injection.
+        var fields = keys.ToFastArray(key => (RedisValue)key);
 
-        var redisKeys = keys.ToFastArray(key => new RedisKey(key));
+        var values = await Database.HashGetAsync(hashKey, fields, flag).ConfigureAwait(false);
 
-        var data = await Database.ScriptEvaluateAsync(luascript, redisKeys, flags: flag).ConfigureAwait(false);
+        var dictionary = new Dictionary<string, T?>(keys.Length, StringComparer.Ordinal);
 
-        var dictionary = new Dictionary<string, T?>();
-
-        var redisValues = (RedisValue[]?)data;
-
-        ref var searchSpaceRedisValue = ref MemoryMarshal.GetReference(redisValues.AsSpan());
-
-        if (redisValues is not { Length: > 0 })
-            return dictionary;
-
-        for (var i = 0; i < redisValues.Length; i += 2)
+        for (var i = 0; i < keys.Length; i++)
         {
-            ref var key = ref Unsafe.Add(ref searchSpaceRedisValue, i);
+            var value = values[i];
 
-            if (!key.HasValue)
+            if (!value.HasValue)
                 continue;
 
-            var redisValue = redisValues[i + 1];
-
-            if (!redisValue.HasValue)
-                continue;
-
-#pragma warning disable CS8604 // Possible null reference argument.
-            var value = Serializer.Deserialize<T?>(redisValue);
-            dictionary.Add(key, value);
-#pragma warning restore CS8604 // Possible null reference argument.
+            dictionary.Add(keys[i], Serializer.Deserialize<T?>(value));
         }
 
         return dictionary;
@@ -144,7 +111,8 @@ public partial class RedisDatabase
     /// <inheritdoc/>
     public async Task<IEnumerable<string>> HashKeysAsync(string hashKey, CommandFlags flag = CommandFlags.None)
     {
-        return (await Database.HashKeysAsync(hashKey, flag).ConfigureAwait(false)).Select(x => x.ToString());
+        // Materialized eagerly: a lazy Select would re-allocate every string on each enumeration.
+        return (await Database.HashKeysAsync(hashKey, flag).ConfigureAwait(false)).ToFastArray(x => x.ToString());
     }
 
     /// <inheritdoc/>

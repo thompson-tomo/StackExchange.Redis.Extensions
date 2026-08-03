@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 
 using StackExchange.Redis.Extensions.Core.Helpers;
@@ -35,17 +34,22 @@ public partial class RedisDatabase
 
         void Handler(RedisChannel redisChannel, RedisValue value)
         {
-            var task = Task.Run(async () =>
+            // Task.Run keeps user handlers off the SE.Redis callback thread; the try/catch replaces a
+            // ContinueWith continuation that was allocated per message even on the success path.
+            _ = Task.Run(async () =>
             {
-                var deserialized = Serializer.Deserialize<T>(value);
-                await handler(deserialized).ConfigureAwait(false);
+                try
+                {
+                    var deserialized = Serializer.Deserialize<T>(value);
+                    await handler(deserialized).ConfigureAwait(false);
+                }
+#pragma warning disable CA1031 // User handlers can throw anything; a failed message must never tear down the subscription.
+                catch (Exception ex)
+#pragma warning restore CA1031
+                {
+                    LogMessages.SubscriptionHandlerError(logger, ex, (string?)redisChannel ?? "unknown");
+                }
             });
-
-            task.ContinueWith(
-                t => LogMessages.SubscriptionHandlerError(logger, t.Exception, (string?)redisChannel ?? "unknown"),
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted,
-                TaskScheduler.Default);
         }
     }
 
@@ -79,33 +83,34 @@ public partial class RedisDatabase
     }
 
     /// <inheritdoc/>
-    public async Task<bool> UpdateExpiryAsync(string key, DateTimeOffset expiresAt, CommandFlags flag = CommandFlags.None)
+    public Task<bool> UpdateExpiryAsync(string key, DateTimeOffset expiresAt, CommandFlags flag = CommandFlags.None)
     {
-        if (await Database.KeyExistsAsync(key).ConfigureAwait(false))
-            return await Database.KeyExpireAsync(key, expiresAt.UtcDateTime.Subtract(DateTime.UtcNow), flag).ConfigureAwait(false);
-
-        return false;
+        // EXPIRE already returns false on missing keys: the previous EXISTS pre-check doubled the round-trips
+        // without adding correctness (the two commands were not atomic anyway).
+        return Database.KeyExpireAsync(key, expiresAt.UtcDateTime.Subtract(DateTime.UtcNow), flag);
     }
 
     /// <inheritdoc/>
-    public async Task<bool> UpdateExpiryAsync(string key, TimeSpan expiresIn, CommandFlags flag = CommandFlags.None)
+    public Task<bool> UpdateExpiryAsync(string key, TimeSpan expiresIn, CommandFlags flag = CommandFlags.None)
     {
-        if (await Database.KeyExistsAsync(key).ConfigureAwait(false))
-            return await Database.KeyExpireAsync(key, expiresIn, flag).ConfigureAwait(false);
-
-        return false;
+        return Database.KeyExpireAsync(key, expiresIn, flag);
     }
 
     /// <inheritdoc/>
     public async Task<IDictionary<string, bool>> UpdateExpiryAllAsync(HashSet<string> keys, DateTimeOffset expiresAt, CommandFlags flag = CommandFlags.None)
     {
-        var tasks = keys.ToFastArray(key => UpdateExpiryAsync(key, expiresAt.UtcDateTime, flag));
+        // Computed once: the previous per-key computation re-read DateTime.UtcNow for every key, drifting the TTL.
+        var expiresIn = expiresAt.UtcDateTime.Subtract(DateTime.UtcNow);
+
+        var tasks = keys.ToFastArray(key => UpdateExpiryAsync(key, expiresIn, flag));
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
 
         var results = new Dictionary<string, bool>(keys.Count, StringComparer.Ordinal);
+        var i = 0;
 
-        keys.FastIteration((key, i) => results.Add(key, tasks[i].Result));
+        foreach (var key in keys)
+            results.Add(key, tasks[i++].Result);
 
         return results;
     }
@@ -118,8 +123,10 @@ public partial class RedisDatabase
         await Task.WhenAll(tasks).ConfigureAwait(false);
 
         var results = new Dictionary<string, bool>(keys.Count, StringComparer.Ordinal);
+        var i = 0;
 
-        keys.FastIteration((key, i) => results.Add(key, tasks[i].Result));
+        foreach (var key in keys)
+            results.Add(key, tasks[i++].Result);
 
         return results;
     }

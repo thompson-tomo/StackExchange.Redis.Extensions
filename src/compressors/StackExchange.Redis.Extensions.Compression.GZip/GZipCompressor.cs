@@ -25,7 +25,8 @@ public class GZipCompressor : ICompressor
     /// <inheritdoc/>
     public byte[] Compress(byte[] data)
     {
-        using var output = new MemoryStream();
+        // Pre-sized to avoid the growth copies of an empty MemoryStream (the +64 covers the GZip header on tiny payloads).
+        using var output = new MemoryStream((data.Length / 2) + 64);
 
         using (var gzip = new GZipStream(output, compressionLevel))
             gzip.Write(data, 0, data.Length);
@@ -38,7 +39,9 @@ public class GZipCompressor : ICompressor
     {
         using var input = new MemoryStream(compressedData);
         using var gzip = new GZipStream(input, CompressionMode.Decompress);
-        using var output = new MemoryStream();
+
+        // Pre-sized with a typical-ratio heuristic to avoid the growth copies of an empty MemoryStream.
+        using var output = new MemoryStream(compressedData.Length * 3);
 
         gzip.CopyTo(output);
 

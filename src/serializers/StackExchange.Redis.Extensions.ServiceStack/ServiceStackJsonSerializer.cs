@@ -1,5 +1,7 @@
 // Copyright (c) Ugo Lattanzi.  All Rights Reserved.  Licensed under the MIT license.  See License.txt in the project root for license information.
 
+using System.IO;
+
 using ServiceStack.Text;
 
 using StackExchange.Redis.Extensions.Core;
@@ -34,8 +36,9 @@ public class ServiceStackJsonSerializer : ISerializer
         if (serializedObject == null)
             return default;
 
-        var json = JsConfig.UTF8Encoding.GetString(serializedObject);
-        return JsonSerializer.DeserializeFromString<T>(json);
+        // The stream API avoids materializing the payload as an intermediate UTF-16 string.
+        using var ms = new MemoryStream(serializedObject, writable: false);
+        return JsonSerializer.DeserializeFromStream<T>(ms);
     }
 
     /// <inheritdoc/>
@@ -44,7 +47,8 @@ public class ServiceStackJsonSerializer : ISerializer
         if (item == null)
             return [];
 
-        var json = JsonSerializer.SerializeToString(item);
-        return JsConfig.UTF8Encoding.GetBytes(json);
+        using var ms = new MemoryStream(256);
+        JsonSerializer.SerializeToStream(item, ms);
+        return ms.ToArray();
     }
 }

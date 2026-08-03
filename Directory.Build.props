@@ -3,7 +3,7 @@
     <!-- General information -->
     <PropertyGroup>
         <Authors>Ugo Lattanzi</Authors>
-        <VersionPrefix>13.0.0</VersionPrefix>
+        <VersionPrefix>13.0.1</VersionPrefix>
         <!--
         <VersionSuffix>pre</VersionSuffix>
         -->
@@ -50,6 +50,20 @@ Features:
 Serializer packages (pick one): System.Text.Json, Newtonsoft, MemoryPack, MsgPack, Protobuf, ServiceStack, Utf8Json.
         </Description>
         <PackageReleaseNotes>
+v13.0.1:
+- Performance: connection pool selection no longer allocates multiple ServerCounters snapshots per operation (LeastLoaded) and uses a true lock-free round-robin instead of a cryptographic RNG (RoundRobin)
+- Performance: RedisDatabase instances are cached per database number instead of being allocated on every Db0..Db16 access
+- Performance: HashGetAsync multi-key now issues a single HMGET instead of N parallel HGET round-trips
+- Performance: UpdateExpiryAsync no longer issues a redundant EXISTS before EXPIRE (half the round-trips)
+- Performance: AddAllAsync builds its payload without LINQ intermediate materializations
+- Performance: eager materialization of previously lazy IEnumerable results (SetPopAsync, SortedSetRangeByScoreAsync, HashKeysAsync, SearchKeysAsync) — no more re-deserialization on repeated enumeration
+- Performance: serializers (Newtonsoft, ServiceStack, MsgPack, Protobuf) no longer materialize intermediate UTF-16 strings or wrapping MemoryStreams
+- Performance: compressors use pooled buffers (Snappier, Brotli, ZstdSharp) and reused Zstd contexts; Snappier.Decompress no longer duplicates the output array
+- Performance: IDistributedCache adapter uses cached field arrays and batches HSET+EXPIRE in a single network write
+- Fixed HashGetAllAsyncAtOneTimeAsync applying KeyPrefix to hash fields instead of the hash key, and removed a potential Lua injection through the hash key
+- Fixed Utf8JsonSerializer.Deserialize throwing on null input instead of returning default
+- Fixed ListGetFromRightAsync duplicated null check (dead code)
+
 v13.0.0:
 - Added HyperLogLog API: HyperLogLogAddAsync, HyperLogLogLengthAsync, HyperLogLogMergeAsync (#637)
 - Added Distributed Lock API: LockTakeAsync, LockReleaseAsync, LockExtendAsync, LockQueryAsync, LockAcquireAsync with IAsyncDisposable auto-release (#638)

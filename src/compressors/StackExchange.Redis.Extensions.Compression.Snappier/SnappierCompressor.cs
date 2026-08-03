@@ -1,6 +1,7 @@
 // Copyright (c) Ugo Lattanzi.  All Rights Reserved.  Licensed under the MIT license.  See License.txt in the project root for license information.
 
 using System;
+using System.Buffers;
 
 using Snappier;
 
@@ -15,11 +16,20 @@ public class SnappierCompressor : ICompressor
     /// <inheritdoc/>
     public byte[] Compress(byte[] data)
     {
+        // The worst-case buffer (~1.17x input) is only transient: renting it avoids a heap (or LOH) allocation per call.
         var maxLength = Snappy.GetMaxCompressedLength(data.Length);
-        var buffer = new byte[maxLength];
-        var compressedLength = Snappy.Compress(data, buffer);
+        var buffer = ArrayPool<byte>.Shared.Rent(maxLength);
 
-        return buffer.AsSpan(0, compressedLength).ToArray();
+        try
+        {
+            var compressedLength = Snappy.Compress(data, buffer);
+
+            return buffer.AsSpan(0, compressedLength).ToArray();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     /// <inheritdoc/>
@@ -29,6 +39,8 @@ public class SnappierCompressor : ICompressor
         var buffer = new byte[decompressedLength];
         var actualLength = Snappy.Decompress(compressedData, buffer);
 
-        return buffer.AsSpan(0, actualLength).ToArray();
+        // The header-declared length matches the actual output, so the buffer can be returned as-is
+        // instead of being copied a second time.
+        return actualLength == decompressedLength ? buffer : buffer.AsSpan(0, actualLength).ToArray();
     }
 }

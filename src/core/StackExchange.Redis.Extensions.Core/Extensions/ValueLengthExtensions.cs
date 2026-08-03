@@ -7,19 +7,23 @@ namespace StackExchange.Redis.Extensions.Core.Extensions;
 
 internal static class ValueLengthExtensions
 {
-    public static IEnumerable<KeyValuePair<string, byte[]>> OfValueInListSize<T>(this IEnumerable<Tuple<string, T>> items, ISerializer serializer, uint maxValueLength)
+    public static KeyValuePair<RedisKey, RedisValue>[] ToRedisEntries<T>(this Tuple<string, T>[] items, ISerializer serializer, uint maxValueLength)
     {
-        using var iterator = items.GetEnumerator();
+        var result = new KeyValuePair<RedisKey, RedisValue>[items.Length];
+        var count = 0;
 
-        while (iterator.MoveNext())
+        foreach (var item in items)
         {
-            if (iterator.Current != null)
-            {
-                yield return new(
-                    iterator.Current.Item1,
-                    iterator.Current.Item2.SerializeItem(serializer).CheckLength(maxValueLength, iterator.Current.Item1));
-            }
+            if (item == null)
+                continue;
+
+            result[count++] = new(item.Item1, item.Item2.SerializeItem(serializer).CheckLength(maxValueLength, item.Item1));
         }
+
+        if (count != result.Length)
+            Array.Resize(ref result, count);
+
+        return result;
     }
 
     public static byte[] OfValueSize<T>(this T? value, ISerializer serializer, uint maxValueLength, string key)
@@ -42,34 +46,5 @@ internal static class ValueLengthExtensions
             throw new ArgumentException("value cannot be longer than the MaxValueLength", paramName);
 
         return byteArray;
-    }
-
-    public static TSource MinBy<TSource, TKey>(
-        this IEnumerable<TSource> source,
-        Func<TSource, TKey> selector,
-        IComparer<TKey>? comparer = null)
-    {
-        comparer ??= Comparer<TKey>.Default;
-
-        using var sourceIterator = source.GetEnumerator();
-
-        if (!sourceIterator.MoveNext())
-            throw new InvalidOperationException("Sequence contains no elements");
-
-        var min = sourceIterator.Current;
-        var minKey = selector(min);
-
-        while (sourceIterator.MoveNext())
-        {
-            var candidate = sourceIterator.Current;
-            var candidateProjected = selector(candidate);
-            if (comparer.Compare(candidateProjected, minKey) < 0)
-            {
-                min = candidate;
-                minKey = candidateProjected;
-            }
-        }
-
-        return min;
     }
 }

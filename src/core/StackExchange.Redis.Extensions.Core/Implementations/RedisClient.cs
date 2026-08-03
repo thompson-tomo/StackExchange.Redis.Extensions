@@ -1,5 +1,8 @@
 // Copyright (c) Ugo Lattanzi.  All Rights Reserved.  Licensed under the MIT license.  See License.txt in the project root for license information.
 
+using System;
+using System.Threading;
+
 using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis.Extensions.Core.Abstractions;
@@ -12,6 +15,11 @@ public class RedisClient : IRedisClient
 {
     private readonly RedisConfiguration redisConfiguration;
     private readonly ILogger<RedisDatabase>? databaseLogger;
+
+    // RedisDatabase is immutable and stateless (the pooled connection is resolved per operation),
+    // so instances can be cached per database number instead of being allocated on every Db0..Db16 access.
+    // The prefix is stored alongside because RedisConfiguration.KeyPrefix is mutable at runtime.
+    private readonly CachedDatabase?[] databaseCache = new CachedDatabase?[17];
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RedisClient"/> class.
@@ -90,7 +98,25 @@ public class RedisClient : IRedisClient
         if (string.IsNullOrEmpty(keyPrefix))
             keyPrefix = redisConfiguration.KeyPrefix;
 
-        return new RedisDatabase(
+        if ((uint)dbNumber >= (uint)databaseCache.Length)
+            return CreateDatabase(dbNumber, keyPrefix);
+
+        var cached = Volatile.Read(ref databaseCache[dbNumber]);
+
+        if (cached != null && string.Equals(cached.KeyPrefix, keyPrefix, StringComparison.Ordinal))
+            return cached.Database;
+
+        var created = CreateDatabase(dbNumber, keyPrefix);
+
+        // A benign race may create an extra instance; that matches the previous allocate-per-call behavior.
+        Volatile.Write(ref databaseCache[dbNumber], new CachedDatabase(created, keyPrefix));
+
+        return created;
+    }
+
+    private RedisDatabase CreateDatabase(int dbNumber, string? keyPrefix)
+    {
+        return new(
             ConnectionPoolManager,
             Serializer,
             redisConfiguration.ServerEnumerationStrategy,
@@ -111,4 +137,11 @@ public class RedisClient : IRedisClient
 
     /// <inheritdoc/>
     public string Name => redisConfiguration.Name ?? IRedisClient.DefaultName;
+
+    private sealed class CachedDatabase(IRedisDatabase database, string? keyPrefix)
+    {
+        public IRedisDatabase Database { get; } = database;
+
+        public string? KeyPrefix { get; } = keyPrefix;
+    }
 }

@@ -1,15 +1,16 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 
-using StackExchange.Redis.Extensions.Core.Extensions;
-
 namespace StackExchange.Redis.Extensions.Core.Helpers;
 internal static class ExceptionThrowHelper
 {
     public static void ThrowIfExistsNullElement<T>(ReadOnlySpan<T> argument, string paramName)
     {
-        if (argument.Any(x => x is null))
-            ThrowNullElementException(paramName);
+        foreach (var item in argument)
+        {
+            if (item is null)
+                ThrowNullElementException(paramName);
+        }
     }
 
     [DoesNotReturn]
