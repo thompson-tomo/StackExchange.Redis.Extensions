@@ -5,7 +5,7 @@
 [![CI](https://github.com/imperugo/StackExchange.Redis.Extensions/actions/workflows/ci.yml/badge.svg)](https://github.com/imperugo/StackExchange.Redis.Extensions/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/imperugo/StackExchange.Redis.Extensions/actions/workflows/codeql.yml/badge.svg)](https://github.com/imperugo/StackExchange.Redis.Extensions/actions/workflows/codeql.yml)
 [![NuGet](https://img.shields.io/nuget/v/StackExchange.Redis.Extensions.Core.svg?style=flat&label=NuGet)](https://www.nuget.org/packages/StackExchange.Redis.Extensions.Core/)
-![Tests](https://img.shields.io/badge/tests-1100%2B%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1600%2B%20passing-brightgreen)
 ![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-blue)
 
 > **AI-Ready:** This library provides an [`llms.txt`](llms.txt) file for AI coding assistants and a Claude Code plugin for configuration, scaffolding, and troubleshooting.
@@ -25,6 +25,10 @@
 - GeoSpatial indexes (GEOADD, GEOSEARCH, GEODIST, etc.)
 - Redis Streams with consumer group support
 - Set, List, and Sorted Set operations with Set Combine (union, intersect, diff)
+- HyperLogLog for probabilistic cardinality estimation
+- Distributed locking with IAsyncDisposable auto-release
+- Bitmap operations for analytics and feature flags
+- Lua scripting for atomic server-side operations
 - Key tagging and search
 - Key management (rename, type, dump/restore)
 - Atomic counters (StringIncrement/StringDecrement)
@@ -250,6 +254,73 @@ var commonTags = await redis.SetCombineAsync<string>(SetOperation.Intersect, "us
 await redis.SetCombineAndStoreAsync(SetOperation.Union, "all:tags", new[] { "set:a", "set:b", "set:c" });
 ```
 
+### HyperLogLog
+
+```csharp
+// Count unique visitors
+await redis.HyperLogLogAddAsync("page:home:visitors", userId);
+var uniqueCount = await redis.HyperLogLogLengthAsync("page:home:visitors");
+
+// Merge daily counts into a monthly aggregate
+await redis.HyperLogLogMergeAsync("visitors:2024:01", new[]
+{
+    "visitors:2024:01:01",
+    "visitors:2024:01:02",
+    "visitors:2024:01:03",
+});
+```
+
+### Distributed Lock
+
+```csharp
+// Acquire a lock with automatic release on dispose
+await using var lockObj = await redis.LockAcquireAsync(
+    "resource:order:123",
+    expiry: TimeSpan.FromSeconds(30),
+    maxRetries: 5,
+    retryDelay: TimeSpan.FromMilliseconds(200));
+
+if (lockObj is not null)
+{
+    // Critical section — lock is held
+    await ProcessOrder(123);
+}
+// Lock released automatically on dispose
+```
+
+### Bitmap Operations
+
+```csharp
+// Track daily active users (1 bit per user ID)
+await redis.StringSetBitAsync("dau:2024-01-15", userId, true);
+
+// Count active users
+var activeCount = await redis.StringBitCountAsync("dau:2024-01-15");
+
+// Compute users active on ALL days (AND operation)
+await redis.StringBitOperationAsync(Bitwise.And, "wau:all-days", new[]
+{
+    "dau:2024-01-15", "dau:2024-01-16", "dau:2024-01-17",
+});
+```
+
+### Lua Scripting
+
+```csharp
+// Atomic server-side operations
+var script = @"
+    local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+    if current < tonumber(ARGV[1]) then
+        return redis.call('INCR', KEYS[1])
+    end
+    return current";
+
+var result = await redis.ScriptEvaluateAsync(
+    script,
+    new RedisKey[] { "counter:views" },
+    new RedisValue[] { 100 });
+```
+
 ### Key Management
 
 ```csharp
@@ -422,12 +493,17 @@ Full documentation is available in the [doc/](doc/) folder:
 - [VectorSet — AI/ML Similarity Search](doc/vectorset.md) (Redis 8.0+)
 - [Redis Streams](doc/streams.md)
 - [Pub/Sub Messaging](doc/pubsub.md)
+- [HyperLogLog](doc/hyperloglog.md) — Probabilistic cardinality estimation
+- [Distributed Lock](doc/distributed-lock.md) — Redis-based locking with IAsyncDisposable
+- [Bitmap Operations](doc/bitmap.md) — Bit-level analytics and feature flags
+- [Lua Scripting](doc/scripting.md) — Server-side script execution
 - [Hash Field Expiry](doc/hash-field-expiry.md) (Redis 7.4+)
 - [Compression](doc/compressors.md) — GZip, Brotli, LZ4, Snappy, Zstandard
 - [Health Check](doc/health-check.md)
 - [IDistributedCache Adapter](doc/distributed-cache.md)
 
 **Advanced**
+- [Migration Guide: v12 → v13](doc/migration-v12-to-v13.md)
 - [Migration Guide: v11 → v12](doc/migration-v11-to-v12.md)
 - [Logging & Diagnostics](doc/logging.md)
 - [Multiple Redis Servers](doc/multipleServers.md) — including Keyed DI Services

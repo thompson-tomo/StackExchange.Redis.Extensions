@@ -62,4 +62,120 @@ public partial class RedisDatabase
 
         return result.ToFastArray(x => new ScoreRankResult<T>(Serializer.Deserialize<T>(x.Element), x.Score));
     }
+
+    /// <inheritdoc/>
+    public Task<long> SortedSetLengthAsync(
+        string key,
+        double min = double.NegativeInfinity,
+        double max = double.PositiveInfinity,
+        Exclude exclude = Exclude.None,
+        CommandFlags flag = CommandFlags.None)
+    {
+        return Database.SortedSetLengthAsync(key, min, max, exclude, flag);
+    }
+
+    /// <inheritdoc/>
+    public Task<double?> SortedSetScoreAsync<T>(
+        string key,
+        T member,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var entryBytes = Serializer.Serialize(member);
+
+        return Database.SortedSetScoreAsync(key, entryBytes, flag);
+    }
+
+    /// <inheritdoc/>
+    public Task<double?[]> SortedSetScoresAsync<T>(
+        string key,
+        T[] members,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var serializedMembers = members.ToFastArray(m => (RedisValue)Serializer.Serialize(m));
+
+        return Database.SortedSetScoresAsync(key, serializedMembers, flag);
+    }
+
+    /// <inheritdoc/>
+    public Task<long?> SortedSetRankAsync<T>(
+        string key,
+        T member,
+        Order order = Order.Ascending,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var entryBytes = Serializer.Serialize(member);
+
+        return Database.SortedSetRankAsync(key, entryBytes, order, flag);
+    }
+
+    /// <inheritdoc/>
+    public Task<double> SortedSetIncrementAsync<T>(
+        string key,
+        T member,
+        double value,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var entryBytes = Serializer.Serialize(member);
+
+        return Database.SortedSetIncrementAsync(key, entryBytes, value, flag);
+    }
+
+    /// <inheritdoc/>
+    public Task<double> SortedSetDecrementAsync<T>(
+        string key,
+        T member,
+        double value,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var entryBytes = Serializer.Serialize(member);
+
+        return Database.SortedSetDecrementAsync(key, entryBytes, value, flag);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IEnumerable<ScoreRankResult<T>>> SortedSetPopAsync<T>(
+        string key,
+        long count = 1,
+        Order order = Order.Ascending,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var result = await Database.SortedSetPopAsync(key, count, order, flag).ConfigureAwait(false);
+
+        return result.ToFastArray(x => new ScoreRankResult<T>(Serializer.Deserialize<T>(x.Element), x.Score));
+    }
+
+    /// <inheritdoc/>
+    public async Task<T?> SortedSetRandomMemberAsync<T>(
+        string key,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var result = await Database.SortedSetRandomMemberAsync(key, flag).ConfigureAwait(false);
+
+        return result == RedisValue.Null ? default : Serializer.Deserialize<T>(result);
+    }
+
+    /// <inheritdoc/>
+    public async Task<T?[]> SortedSetRandomMembersAsync<T>(
+        string key,
+        long count,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var result = await Database.SortedSetRandomMembersAsync(key, count, flag).ConfigureAwait(false);
+
+        return result.ToFastArray(m => m == RedisValue.Null ? default : Serializer.Deserialize<T>(m));
+    }
+
+    /// <inheritdoc/>
+    public Task<long> SortedSetCombineAndStoreAsync(
+        SetOperation operation,
+        string destinationKey,
+        string[] keys,
+        double[]? weights = null,
+        Aggregate aggregate = Aggregate.Sum,
+        CommandFlags flag = CommandFlags.None)
+    {
+        var redisKeys = keys.ToFastArray(k => (RedisKey)k);
+
+        return Database.SortedSetCombineAndStoreAsync(operation, destinationKey, redisKeys, weights, aggregate, flag);
+    }
 }
