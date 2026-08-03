@@ -1,8 +1,8 @@
 # StackExchange.Redis.Extensions
 
-> A .NET library that extends StackExchange.Redis with object serialization, connection pooling, and higher-level APIs for Redis operations including Pub/Sub, Streams, GeoSpatial, VectorSet, Hash field expiry, and transparent compression.
+> A .NET library that extends StackExchange.Redis with object serialization, connection pooling, and higher-level APIs for Redis operations including Pub/Sub, Streams, GeoSpatial, VectorSet, Hash field expiry, HyperLogLog, Distributed Lock, Bitmap, Lua Scripting, and transparent compression.
 
-StackExchange.Redis.Extensions wraps the base StackExchange.Redis client library to make it easier to work with Redis in .NET applications. It supports .NET Standard 2.1, .NET 8, .NET 9, and .NET 10. All values are automatically serialized/deserialized through a pluggable ISerializer interface. Connection pooling with LeastLoaded and RoundRobin strategies is built-in. Includes IDistributedCache adapter, ASP.NET Core Health Check, .NET 8+ Keyed DI Services, atomic counters, Set Combine operations, and key management APIs.
+StackExchange.Redis.Extensions wraps the base StackExchange.Redis client library to make it easier to work with Redis in .NET applications. It supports .NET Standard 2.1, .NET 8, .NET 9, and .NET 10. Compatible with StackExchange.Redis 2.x and 3.x. All values are automatically serialized/deserialized through a pluggable ISerializer interface. Connection pooling with LeastLoaded and RoundRobin strategies is built-in. Includes IDistributedCache adapter, ASP.NET Core Health Check, .NET 8+ Keyed DI Services, atomic counters, Set Combine operations, key management APIs, HyperLogLog, distributed locking, bitmap operations, and Lua scripting.
 
 ## Core Documentation
 
@@ -26,6 +26,10 @@ StackExchange.Redis.Extensions wraps the base StackExchange.Redis client library
 - [Pub/Sub Messaging](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/pubsub.md): Typed publish/subscribe with error handling
 - [Hash Field Expiry](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/hash-field-expiry.md): Per-field TTL with HSETEX, HEXPIRE (Redis 7.4+)
 - [Compression](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/compressors.md): LZ4, Snappier, Zstandard, GZip, Brotli
+- [HyperLogLog](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/hyperloglog.md): Probabilistic cardinality estimation (unique counts)
+- [Distributed Lock](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/distributed-lock.md): Redis-based distributed locking with IAsyncDisposable
+- [Bitmap Operations](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/bitmap.md): Bit-level operations for analytics and feature flags
+- [Lua Scripting](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/scripting.md): Server-side Lua script execution
 - [Health Check](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/health-check.md): ASP.NET Core health check monitoring connection pools
 - [IDistributedCache Adapter](https://raw.githubusercontent.com/imperugo/StackExchange.Redis.Extensions/master/doc/distributed-cache.md): Microsoft-compatible IDistributedCache with sliding expiration
 

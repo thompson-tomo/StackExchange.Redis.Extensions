@@ -3,7 +3,7 @@
     <!-- General information -->
     <PropertyGroup>
         <Authors>Ugo Lattanzi</Authors>
-        <VersionPrefix>12.6.0</VersionPrefix>
+        <VersionPrefix>13.0.0</VersionPrefix>
         <!--
         <VersionSuffix>pre</VersionSuffix>
         -->
@@ -27,8 +27,8 @@
     <!-- Packages stuff -->
     <PropertyGroup>
         <Title>StackExchange.Redis.Extensions — high-level Redis client with serialization, pooling, and typed APIs</Title>
-        <Summary>Extends StackExchange.Redis with object serialization, connection pooling, Pub/Sub, Streams, GeoSpatial, Hash field expiry, compression, and ASP.NET Core integration.</Summary>
-        <Description>StackExchange.Redis.Extensions is a library that extends StackExchange.Redis with higher-level APIs for common application scenarios.
+        <Summary>Extends StackExchange.Redis with object serialization, connection pooling, Pub/Sub, Streams, GeoSpatial, HyperLogLog, Distributed Lock, Bitmap, Lua Scripting, Hash field expiry, compression, and ASP.NET Core integration.</Summary>
+        <Description>StackExchange.Redis.Extensions is a library that extends StackExchange.Redis with higher-level APIs for common application scenarios. Compatible with StackExchange.Redis 2.x and 3.x.
 
 Features:
 - Store and retrieve complex .NET objects with pluggable serialization
@@ -36,6 +36,10 @@ Features:
 - Pub/Sub messaging with typed handlers and error logging
 - Redis Streams with consumer group support
 - GeoSpatial indexes (GEOADD, GEOSEARCH, GEODIST)
+- HyperLogLog for probabilistic cardinality estimation
+- Distributed locking with IAsyncDisposable auto-release
+- Bitmap operations for analytics and feature flags
+- Lua scripting for atomic server-side operations
 - Hash field expiry (Redis 7.4+ HEXPIRE/HSETEX)
 - Transparent compression (LZ4, Snappy, Zstd, GZip, Brotli)
 - Azure Managed Identity support
@@ -46,6 +50,17 @@ Features:
 Serializer packages (pick one): System.Text.Json, Newtonsoft, MemoryPack, MsgPack, Protobuf, ServiceStack, Utf8Json.
         </Description>
         <PackageReleaseNotes>
+v13.0.0:
+- Added HyperLogLog API: HyperLogLogAddAsync, HyperLogLogLengthAsync, HyperLogLogMergeAsync (#637)
+- Added Distributed Lock API: LockTakeAsync, LockReleaseAsync, LockExtendAsync, LockQueryAsync, LockAcquireAsync with IAsyncDisposable auto-release (#638)
+- Enriched Sorted Set API: SortedSetLengthAsync, SortedSetScoreAsync, SortedSetRankAsync, SortedSetIncrementAsync, SortedSetDecrementAsync, SortedSetPopAsync, SortedSetRandomMemberAsync, SortedSetCombineAndStoreAsync (#639)
+- Enriched List API: ListAddToRightAsync, ListGetFromLeftAsync, ListLengthAsync, ListRangeAsync, ListGetByIndexAsync, ListSetByIndexAsync, ListTrimAsync, ListRemoveAsync, ListInsertBeforeAsync, ListInsertAfterAsync, ListMoveAsync (#640)
+- Added Lua Scripting API: ScriptEvaluateAsync, ScriptEvaluateReadOnlyAsync with typed deserialization (#641)
+- Added Bitmap API: StringSetBitAsync, StringGetBitAsync, StringBitCountAsync, StringBitOperationAsync, StringBitPositionAsync (#642)
+- Added StackExchange.Redis 3.x compatibility via version range [2.12.14, 4.0.0) (#656)
+- Added VectorSet tests now that Redis 8.0+ is available on Docker Hub (#648)
+- Updated CI to use redis:8 Docker image for VectorSet test coverage
+
 v12.6.0:
 - Fixed Pub/Sub UnsubscribeAsync and UnsubscribeAllAsync not working with connection pooling — unsubscribe now iterates the pool to find the correct multiplexer (#657)
 
@@ -90,7 +105,7 @@ v12.0.0:
 - Replaced Moq with NSubstitute
         </PackageReleaseNotes>
         <PackageProjectUrl>https://github.com/imperugo/StackExchange.Redis.Extensions</PackageProjectUrl>
-        <PackageTags>Redis Cache Async NoSQL Distributed PubSub Streams GeoSpatial Compression Serialization DependencyInjection</PackageTags>
+        <PackageTags>Redis Cache Async NoSQL Distributed PubSub Streams GeoSpatial Compression Serialization DependencyInjection HyperLogLog Lock Bitmap Scripting</PackageTags>
     </PropertyGroup>
 
     <!-- Repo -->

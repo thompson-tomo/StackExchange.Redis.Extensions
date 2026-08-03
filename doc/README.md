@@ -36,10 +36,15 @@
 * [VectorSet — AI/ML Similarity Search](vectorset.md) (Redis 8.0+)
 * [Redis Streams](streams.md)
 * [Pub/Sub Messaging](pubsub.md)
+* [HyperLogLog](hyperloglog.md) — probabilistic cardinality estimation
+* [Distributed Lock](distributed-lock.md) — Redis-based distributed locking with IAsyncDisposable
+* [Bitmap Operations](bitmap.md) — bit-level operations for analytics and feature flags
+* [Lua Scripting](scripting.md) — server-side script execution
 * [Custom Serializer](usage/custom-serializer.md)
 
 ## Advanced
 
+* [Migration Guide: v12 → v13](migration-v12-to-v13.md)
 * [Migration Guide: v11 → v12](migration-v11-to-v12.md)
 * [Logging & Diagnostics](logging.md)
 * [Multiple Redis Servers](multipleServers.md)
