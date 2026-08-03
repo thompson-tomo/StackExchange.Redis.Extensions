@@ -1,6 +1,6 @@
 ---
 name: redis-diagnose
-description: Troubleshoot common StackExchange.Redis.Extensions issues — timeouts, connection failures, serialization problems, pool exhaustion
+description: Troubleshoot common StackExchange.Redis.Extensions issues — timeouts, connection failures, serialization problems, pool exhaustion, distributed locks, Lua scripting
 ---
 
 # Redis Diagnose
@@ -15,6 +15,8 @@ When the user reports:
 - Serialization errors
 - Pool exhaustion
 - Pub/Sub messages not being received
+- Distributed lock failures
+- Lua scripting errors
 - Performance issues
 
 ## Diagnostic Tree
@@ -95,6 +97,26 @@ When the user reports:
 1. **Config must have a Name** — `RedisConfiguration.Name` must be non-empty for keyed registration
 2. **Use eager overloads** — keyed services are only registered with the overloads that receive `RedisConfiguration` directly, NOT the `Func<IServiceProvider, ...>` overload
 3. **Name must match exactly** — `[FromKeyedServices("cache")]` must match `config.Name = "cache"` (case-sensitive)
+
+### Distributed Lock Issues
+**Symptoms:** Lock not acquired, deadlocks, lock lost during processing
+
+**Check:**
+1. **LockAcquireAsync returns null** — increase `maxRetries` or `retryDelay`, the resource may be legitimately contended
+2. **Lock expires during processing** — use `lockObj.ExtendAsync(TimeSpan)` to extend the TTL before it expires
+3. **Lock not released on error** — always use `await using` pattern, never try/finally with manual release
+4. **Deadlock** — ensure lock expiry is always set. If the holder crashes, the lock auto-expires
+5. **This is a single-instance lock** — for Redis Cluster, consider Redlock algorithm
+
+### Lua Script Errors
+**Symptoms:** `RedisServerException`, NOSCRIPT, wrong return type
+
+**Check:**
+1. **NOSCRIPT error** — the script was cached but the server restarted. SE.Redis retries with EVAL automatically, but check for transient failures
+2. **Wrong return type** — Lua `return 1` returns `long`, `return "hello"` returns `string`. Use explicit casts on RedisResult
+3. **CROSSSLOT error in Cluster** — all KEYS[] must hash to the same slot. Use hash tags: `{user}:counter`, `{user}:data`
+4. **Script blocks Redis** — Lua runs atomically, blocking the event loop. Keep scripts short (<1ms). Use read-only variant (`ScriptEvaluateReadOnlyAsync`) for read operations to route to replicas
+5. **Typed deserialization fails** — `ScriptEvaluateAsync<T>` passes the raw bytes through ISerializer. Ensure the script returns a value serialized in the same format
 
 ### Performance Issues
 **Check:**

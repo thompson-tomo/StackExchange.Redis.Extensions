@@ -1,6 +1,6 @@
 ---
 name: redis-scaffold
-description: Generate code patterns for StackExchange.Redis.Extensions — Streams, Geo, VectorSet, Hash, Pub/Sub, Sets, Compression
+description: Generate code patterns for StackExchange.Redis.Extensions — Streams, Geo, VectorSet, Hash, Pub/Sub, Sets, HyperLogLog, Lock, Bitmap, Scripting, Compression
 ---
 
 # Redis Scaffold
@@ -15,6 +15,10 @@ When the user asks to implement:
 - VectorSet similarity search (RAG, recommendations)
 - Hash operations with per-field TTL
 - Pub/Sub messaging
+- HyperLogLog (unique counting, cardinality estimation)
+- Distributed locking (mutual exclusion, critical sections)
+- Bitmap operations (analytics, feature flags, DAU tracking)
+- Lua scripting (atomic multi-command operations, rate limiting)
 - Caching patterns (cache-aside, write-through, IDistributedCache)
 - Atomic counters (increment/decrement)
 - Set operations (union, intersect, difference)
@@ -198,6 +202,161 @@ public class TagService(IRedisDatabase redis)
 }
 ```
 
+### HyperLogLog (Unique Counting)
+```csharp
+public class UniqueVisitorCounter(IRedisDatabase redis)
+{
+    public async Task TrackVisitorAsync(string page, string userId)
+    {
+        await redis.HyperLogLogAddAsync($"visitors:{page}", userId);
+    }
+
+    public async Task<long> GetUniqueVisitorsAsync(string page)
+    {
+        return await redis.HyperLogLogLengthAsync($"visitors:{page}");
+    }
+
+    public async Task<long> GetTotalUniqueAcrossPagesAsync(string[] pages)
+    {
+        var keys = pages.Select(p => $"visitors:{p}").ToArray();
+        return await redis.HyperLogLogLengthAsync(keys);
+    }
+
+    public async Task MergeDailyIntoMonthlyAsync(string month, string[] dailyKeys)
+    {
+        await redis.HyperLogLogMergeAsync($"visitors:monthly:{month}", dailyKeys);
+    }
+}
+```
+
+### Distributed Lock
+```csharp
+public class OrderProcessor(IRedisDatabase redis)
+{
+    public async Task ProcessOrderAsync(int orderId)
+    {
+        await using var lockObj = await redis.LockAcquireAsync(
+            $"lock:order:{orderId}",
+            expiry: TimeSpan.FromSeconds(30),
+            maxRetries: 5,
+            retryDelay: TimeSpan.FromMilliseconds(200));
+
+        if (lockObj is null)
+            throw new InvalidOperationException($"Could not acquire lock for order {orderId}");
+
+        // Critical section — only one worker processes this order
+        await DoProcessing(orderId);
+
+        // Lock auto-released on dispose
+    }
+
+    public async Task LongRunningTaskAsync(string resourceId)
+    {
+        await using var lockObj = await redis.LockAcquireAsync(
+            $"lock:{resourceId}", TimeSpan.FromSeconds(10));
+
+        if (lockObj is null)
+            return;
+
+        // Extend if work takes longer than expected
+        var extended = await lockObj.ExtendAsync(TimeSpan.FromSeconds(30));
+        if (!extended)
+            return; // Lock was lost
+
+        await DoLongWork(resourceId);
+    }
+}
+```
+
+### Bitmap (Analytics / Feature Flags)
+```csharp
+public class UserAnalytics(IRedisDatabase redis)
+{
+    public async Task TrackDailyActiveAsync(long userId)
+    {
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        await redis.StringSetBitAsync($"dau:{today}", userId, true);
+    }
+
+    public async Task<long> GetDailyActiveCountAsync(string date)
+    {
+        return await redis.StringBitCountAsync($"dau:{date}");
+    }
+
+    public async Task<long> GetWeeklyRetentionAsync(string[] dailyKeys)
+    {
+        // Users active on ALL days
+        await redis.StringBitOperationAsync(Bitwise.And, "retention:week", dailyKeys);
+        return await redis.StringBitCountAsync("retention:week");
+    }
+}
+
+public class FeatureFlags(IRedisDatabase redis)
+{
+    public async Task EnableForUserAsync(string feature, long userId)
+    {
+        await redis.StringSetBitAsync($"feature:{feature}", userId, true);
+    }
+
+    public async Task<bool> IsEnabledAsync(string feature, long userId)
+    {
+        return await redis.StringGetBitAsync($"feature:{feature}", userId);
+    }
+}
+```
+
+### Lua Scripting (Atomic Operations)
+```csharp
+public class AtomicRateLimiter(IRedisDatabase redis)
+{
+    private const string RateLimitScript = """
+        local key = KEYS[1]
+        local limit = tonumber(ARGV[1])
+        local window = tonumber(ARGV[2])
+        local current = tonumber(redis.call('GET', key) or '0')
+        if current < limit then
+            redis.call('INCR', key)
+            if current == 0 then
+                redis.call('EXPIRE', key, window)
+            end
+            return 1
+        end
+        return 0
+        """;
+
+    public async Task<bool> AllowRequestAsync(string clientId, int limit, int windowSeconds)
+    {
+        var result = await redis.ScriptEvaluateAsync(
+            RateLimitScript,
+            new RedisKey[] { $"ratelimit:{clientId}" },
+            new RedisValue[] { limit, windowSeconds });
+
+        return (long)result == 1;
+    }
+}
+
+public class AtomicCounter(IRedisDatabase redis)
+{
+    private const string IncrWithCeilingScript = """
+        local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+        if current < tonumber(ARGV[1]) then
+            return redis.call('INCR', KEYS[1])
+        end
+        return current
+        """;
+
+    public async Task<long> IncrementWithCeilingAsync(string key, long ceiling)
+    {
+        var result = await redis.ScriptEvaluateAsync(
+            IncrWithCeilingScript,
+            new RedisKey[] { key },
+            new RedisValue[] { ceiling });
+
+        return (long)result;
+    }
+}
+```
+
 ### Key Management
 ```csharp
 // Rename with condition
@@ -236,3 +395,8 @@ public class SessionService(IDistributedCache cache)
 - Hash field expiry requires Redis 7.4+
 - Compression wraps ISerializer transparently — all operations benefit automatically
 - Lease<T> return types (VectorSet search) must be disposed after use
+- Bitmap operations do NOT use serialization — they work directly with bit offsets
+- Distributed locks use a GUID holder value — only the holder can release/extend
+- LockAcquireAsync returns null (not exception) when lock cannot be acquired
+- Lua scripts should use KEYS[n] and ARGV[n] — never hardcode key names (cluster compatibility)
+- ScriptEvaluateReadOnlyAsync uses EVALRO and can be routed to replicas

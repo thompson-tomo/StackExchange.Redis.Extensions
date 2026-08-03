@@ -1,7 +1,7 @@
 {
   "name": "stackexchange-redis-extensions",
   "version": "1.0.0",
-  "description": "Configure, scaffold, and troubleshoot StackExchange.Redis.Extensions — the high-level .NET Redis client with serialization, pooling, Streams, Geo, VectorSet, compression, and more.",
+  "description": "Configure, scaffold, and troubleshoot StackExchange.Redis.Extensions — the high-level .NET Redis client with serialization, pooling, Streams, Geo, VectorSet, HyperLogLog, Distributed Lock, Bitmap, Lua Scripting, compression, and more.",
   "author": "imperugo",
   "homepage": "https://github.com/imperugo/StackExchange.Redis.Extensions",
   "skills": [
