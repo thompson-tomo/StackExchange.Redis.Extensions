@@ -1,10 +1,9 @@
 // Copyright (c) Ugo Lattanzi.  All Rights Reserved.  Licensed under the MIT license.  See License.txt in the project root for license information.
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
-using StackExchange.Redis.Extensions.Core.Helpers;
+using StackExchange.Redis.Extensions.Core.Extensions;
 using StackExchange.Redis.Extensions.Core.Models;
 
 namespace StackExchange.Redis.Extensions.Core.Implementations;

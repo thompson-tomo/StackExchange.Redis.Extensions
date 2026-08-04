@@ -47,17 +47,4 @@ internal static class SpanExtensions
             }
         }
     }
-
-    public static TResult[] ToFastArray<TSource, TResult>(this ReadOnlySpan<TSource> span, Func<TSource, TResult> action)
-    {
-        if (span.IsEmpty)
-            return [];
-
-        var result = new TResult[span.Length];
-
-        for (var i = 0; i < span.Length; i++)
-            result[i] = action.Invoke(span[i]);
-
-        return result;
-    }
 }
