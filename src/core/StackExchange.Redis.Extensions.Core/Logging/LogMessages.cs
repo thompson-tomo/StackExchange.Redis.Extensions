@@ -18,7 +18,7 @@ internal static partial class LogMessages
         Message = "Redis connection pool initialized: {PoolSize} connections to {Endpoint} in {ElapsedMs}ms")]
     public static partial void PoolInitialized(ILogger logger, int poolSize, string endpoint, long elapsedMs);
 
-    [LoggerMessage(EventId = 1002, Level = LogLevel.Debug,
+    [LoggerMessage(EventId = 1002, Level = LogLevel.Debug, SkipEnabledCheck = true, // Check by the caller
         Message = "Using connection {ConnectionHash} with {Outstanding} outstanding commands")]
     public static partial void ConnectionSelected(ILogger logger, int connectionHash, long outstanding);
 
