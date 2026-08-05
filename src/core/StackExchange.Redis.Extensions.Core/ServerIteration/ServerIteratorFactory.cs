@@ -10,6 +10,11 @@ namespace StackExchange.Redis.Extensions.Core.ServerIteration;
 /// <summary>
 /// The factory that allows you to enumerate all Redis servers.
 /// </summary>
+#if NET5_0_OR_GREATER
+[Obsolete("This type is removed in v14. Fire an issue if you require similar functionality.", DiagnosticId = "SRE0002")]
+#else
+[Obsolete("This type is removed in v14. Fire an issue if you require similar functionality.")]
+#endif
 public static class ServerIteratorFactory
 {
     /// <summary>
@@ -21,34 +26,5 @@ public static class ServerIteratorFactory
     public static IEnumerable<IServer> GetServers(
         IConnectionMultiplexer multiplexer,
         ServerEnumerationStrategy serverEnumerationStrategy)
-    {
-        switch (serverEnumerationStrategy.Mode)
-        {
-            case ServerEnumerationStrategy.ModeOptions.All:
-                return new ServerEnumerable(
-                    multiplexer,
-                    serverEnumerationStrategy.TargetRole,
-                    serverEnumerationStrategy.UnreachableServerAction);
-
-            case ServerEnumerationStrategy.ModeOptions.Single:
-                var serversSingle = new ServerEnumerable(
-                    multiplexer,
-                    serverEnumerationStrategy.TargetRole,
-                    serverEnumerationStrategy.UnreachableServerAction);
-
-                return TakeFirst(serversSingle);
-
-            default:
-                throw new NotImplementedException();
-        }
-    }
-
-    private static IEnumerable<IServer> TakeFirst(ServerEnumerable servers)
-    {
-        foreach (var server in servers)
-        {
-            yield return server;
-            yield break;
-        }
-    }
+        => new ServerSource(multiplexer).GetServers(serverEnumerationStrategy);
 }
