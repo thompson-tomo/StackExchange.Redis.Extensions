@@ -188,3 +188,6 @@ FakesAssemblies/
 CLAUDE.md
 .claude/
 
+# Redis snapshots, if someone runs redis-server from the repo root instead of the test container
+*.rdb
+
