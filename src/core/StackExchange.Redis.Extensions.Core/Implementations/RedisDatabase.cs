@@ -505,11 +505,12 @@ public partial class RedisDatabase : IRedisDatabase
     /// <inheritdoc/>
     public async Task<IEnumerable<string>> SearchKeysAsync(string pattern)
     {
-        pattern = $"{keyPrefix}{pattern}";
+        pattern = keyPrefix + pattern;
         var keys = new HashSet<string>();
         var hasPrefix = !string.IsNullOrEmpty(keyPrefix);
 
-        foreach (var server in ServerIteratorFactory.GetServers(connectionPoolManager.GetConnection(), serverEnumerationStrategy))
+        var serverSource = new ServerSource(connectionPoolManager.GetConnection());
+        foreach (var server in serverSource.GetServers(serverEnumerationStrategy))
         {
             // The prefix is stripped while filling: a lazy Select would re-allocate every substring on each enumeration.
             await foreach (var key in server.KeysAsync(dbNumber, pattern, 1000).ConfigureAwait(false))

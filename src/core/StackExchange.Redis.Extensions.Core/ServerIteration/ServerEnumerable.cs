@@ -1,5 +1,6 @@
 // Copyright (c) Ugo Lattanzi.  All Rights Reserved.  Licensed under the MIT license.  See License.txt in the project root for license information.
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -10,6 +11,11 @@ namespace StackExchange.Redis.Extensions.Core.ServerIteration;
 /// <summary>
 /// The class that allows you to enumerate all the redis servers.
 /// </summary>
+#if NET5_0_OR_GREATER
+[Obsolete("This type is removed in v14. Fire an issue if you require similar functionality.", DiagnosticId = "SRE0002")]
+#else
+[Obsolete("This type is removed in v14. Fire an issue if you require similar functionality.")]
+#endif
 public class ServerEnumerable : IEnumerable<IServer>
 {
     private readonly IConnectionMultiplexer multiplexer;
@@ -36,25 +42,13 @@ public class ServerEnumerable : IEnumerable<IServer>
     /// Return the enumerator of the Redis servers
     /// </summary>
     public IEnumerator<IServer> GetEnumerator()
-    {
-        foreach (var endPoint in multiplexer.GetEndPoints())
+        => new ServerSource(multiplexer).GetServers(new()
         {
-            var server = multiplexer.GetServer(endPoint);
-            if (targetRole == ServerEnumerationStrategy.TargetRoleOptions.PreferSlave)
-            {
-                if (!server.IsReplica)
-                    continue;
-            }
-
-            if (unreachableServerAction == ServerEnumerationStrategy.UnreachableServerActionOptions.IgnoreIfOtherAvailable)
-            {
-                if (!server.IsConnected || !server.Features.Scan)
-                    continue;
-            }
-
-            yield return server;
-        }
-    }
+            Mode = ServerEnumerationStrategy.ModeOptions.All,
+            TargetRole = targetRole,
+            UnreachableServerAction = unreachableServerAction
+        })
+            .GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator()
     {
