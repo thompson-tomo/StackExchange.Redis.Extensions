@@ -11,11 +11,9 @@ using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
-using StackExchange.Redis;
-
 using StackExchange.Redis.Extensions.Core.Abstractions;
 using StackExchange.Redis.Extensions.Core.Configuration;
-using StackExchange.Redis.Extensions.Core.Helpers;
+using StackExchange.Redis.Extensions.Core.Extensions;
 using StackExchange.Redis.Extensions.Core.Implementations;
 using StackExchange.Redis.Extensions.Core.Tests.Helpers;
 using StackExchange.Redis.Extensions.Tests.Extensions;

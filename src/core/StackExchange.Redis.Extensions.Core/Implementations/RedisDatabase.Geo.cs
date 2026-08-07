@@ -2,7 +2,7 @@
 
 using System.Threading.Tasks;
 
-using StackExchange.Redis.Extensions.Core.Helpers;
+using StackExchange.Redis.Extensions.Core.Extensions;
 
 namespace StackExchange.Redis.Extensions.Core.Implementations;
 
